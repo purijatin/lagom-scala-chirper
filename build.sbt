@@ -7,16 +7,17 @@ val macwire = "com.softwaremill.macwire" %% "macros" % "2.2.5" % "provided"
 lazy val friendApi = project("friend-api")
   .settings(
     version := "1.0-SNAPSHOT",
-    libraryDependencies += lagomJavadslApi
+    libraryDependencies += lagomScaladslApi
   )
 
 lazy val friendImpl = project("friend-impl")
-  .enablePlugins(LagomJava)
+  .enablePlugins(LagomScala)
   .settings(
     version := "1.0-SNAPSHOT",
     libraryDependencies ++= Seq(
-      lagomJavadslPersistenceCassandra,
-      lagomJavadslTestKit
+      lagomScaladslPersistenceCassandra,
+      lagomScaladslTestKit,
+      macwire
     )
   )
   .settings(lagomForkedTestSettings: _*)

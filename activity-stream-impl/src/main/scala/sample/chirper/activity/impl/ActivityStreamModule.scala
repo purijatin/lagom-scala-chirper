@@ -7,12 +7,14 @@ import com.lightbend.lagom.scaladsl.server.{LagomApplication, LagomApplicationCo
 import com.softwaremill.macwire._
 import play.api.libs.ws.ahc.AhcWSComponents
 import sample.chirper.activity.api.ActivityStreamService
+import sample.chirper.chirp.api.ChirpService
 import sample.chirper.friend.api.FriendService
 
 abstract class ActivityStreamModule (context: LagomApplicationContext)
   extends LagomApplication(context)
     with AhcWSComponents {
   lazy val friendService = serviceClient.implement[FriendService]
+  lazy val chirpService = serviceClient.implement[ChirpService]
 
   override lazy val lagomServer = serverFor[ActivityStreamService](wire[ActivityStreamServiceImpl])
 //      bindServices(serviceBinding(classOf[ActivityStreamService], classOf[ActivityStreamServiceImpl]))

@@ -34,7 +34,7 @@ class LoadTestServiceImpl @Inject() (
   private val runSeq = new AtomicLong((System.currentTimeMillis()
     - LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli) / 1000)
 
-  override def startLoad(): ServiceCall[NotUsed, Source[String, _]] = {
+  override def startLoad(): ServiceCall[NotUsed, Source[String, NotUsed]] = {
     _ => Future.successful(load(new TestParams()))
   }
 
@@ -46,7 +46,7 @@ class LoadTestServiceImpl @Inject() (
       }
   }
 
-  private def load(params: TestParams): Source[String, _] = {
+  private def load(params: TestParams): Source[String, NotUsed] = {
     val runSeqNr = runSeq.incrementAndGet()
     val userIdPrefix = params.userIdPrefix.getOrElse(s"user-$runSeqNr-")
 
@@ -113,7 +113,7 @@ class LoadTestServiceImpl @Inject() (
     output
   }
 
-  private def summary(title: String): Flow[NotUsed, String, _] = {
+  private def summary(title: String): Flow[NotUsed, String, NotUsed] = {
     Flow[NotUsed]
       .scan(0)((count, elem) => count + 1)
       .drop(1)

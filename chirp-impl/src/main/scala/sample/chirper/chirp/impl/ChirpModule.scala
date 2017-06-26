@@ -16,6 +16,5 @@ abstract class ChirpModule(context: LagomApplicationContext)
     with CassandraPersistenceComponents
     with PubSubComponents
 {
-
   override lazy val lagomServer = serverFor[ChirpService](wire[ChirpServiceImpl])
 }
