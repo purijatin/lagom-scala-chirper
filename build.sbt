@@ -15,7 +15,6 @@ lazy val friendImpl = project("friend-impl")
   .settings(
     version := "1.0-SNAPSHOT",
     libraryDependencies ++= Seq(
-      lagomScaladslPersistenceCassandra,
       lagomScaladslTestKit,
       macwire
     )
@@ -28,7 +27,6 @@ lazy val chirpApi = project("chirp-api")
     version := "1.0-SNAPSHOT",
     libraryDependencies ++= Seq(
       lagomScaladslApi
-//      lagomScaladslJackson
     )
   )
 
@@ -37,15 +35,13 @@ lazy val chirpImpl = project("chirp-impl")
   .settings(
     version := "1.0-SNAPSHOT",
     libraryDependencies ++= Seq(
-      lagomScaladslPersistence,
-      lagomScaladslPersistenceCassandra,
       lagomScaladslPubSub,
       lagomScaladslTestKit,
       macwire
     )
   )
   .settings(lagomForkedTestSettings: _*)
-  .dependsOn(chirpApi, utils)
+  .dependsOn(chirpApi)
 
 lazy val activityStreamApi = project("activity-stream-api")
   .settings(
@@ -63,18 +59,20 @@ lazy val activityStreamImpl = project("activity-stream-impl")
       macwire
     )
   )
-  .dependsOn(activityStreamApi, chirpApi, friendApi, utils)
+  .dependsOn(activityStreamApi, chirpApi, friendApi)
 
 lazy val frontEnd = project("front-end")
   .enablePlugins(PlayScala, LagomPlay)
   .settings(
     version := "1.0-SNAPSHOT",
-    routesGenerator := InjectedRoutesGenerator,
+    routesGenerator := StaticRoutesGenerator,
     libraryDependencies ++= Seq(
       "org.webjars" % "react" % "0.14.3",
       "org.webjars" % "react-router" % "1.0.3",
       "org.webjars" % "jquery" % "2.2.0",
-      "org.webjars" % "foundation" % "5.3.0"
+      "org.webjars" % "foundation" % "5.3.0",
+      macwire,
+      lagomScaladslServer
     ),
     ReactJsKeys.sourceMapInline := true
   )
@@ -95,11 +93,11 @@ lazy val frontEnd = project("front-end")
 //  )
 //  .dependsOn(loadTestApi, friendApi, activityStreamApi, chirpApi, utils)
 
-lazy val utils = project("utils")
-  .settings(
-    version := "1.0-SNAPSHOT",
-    libraryDependencies += lagomScaladslApi
-  )
+//lazy val utils = project("utils")
+//  .settings(
+//    version := "1.0-SNAPSHOT",
+//    libraryDependencies += lagomScaladslApi
+//  )
 
 def project(id: String) = Project(id, base = file(id))
   .settings(
@@ -111,8 +109,6 @@ def project(id: String) = Project(id, base = file(id))
     )
   )
 
-// do not delete database files on start
-lagomCassandraCleanOnStart in ThisBuild := false
-
 licenses in ThisBuild := Seq("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0"))
 
+lagomCassandraEnabled in ThisBuild := false

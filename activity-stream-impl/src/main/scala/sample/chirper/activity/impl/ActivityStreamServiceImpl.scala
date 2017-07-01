@@ -13,7 +13,7 @@ import com.lightbend.lagom.scaladsl.api.ServiceCall
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import javax.inject.Inject
+
 import sample.chirper.activity.api.ActivityStreamService
 import sample.chirper.chirp.api.Chirp
 import sample.chirper.chirp.api.ChirpService

@@ -28,7 +28,7 @@ trait FriendService extends Service {
    *
    * The request message is the User to create.
    */
-  def createUser(): ServiceCall[User, Done]
+  def createUser(): ServiceCall[CreateUser, Done]
 
   /**
    * Service call for adding a friend to a user.

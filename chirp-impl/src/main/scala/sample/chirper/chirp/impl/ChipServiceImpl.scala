@@ -3,13 +3,10 @@
  */
 package sample.chirper.chirp.impl
 
-import java.time.Instant
-import javax.inject.Inject
-
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import com.lightbend.lagom.scaladsl.api.ServiceCall
-import com.lightbend.lagom.scaladsl.persistence.cassandra.CassandraSession
+
 import com.lightbend.lagom.scaladsl.pubsub.{PubSubRef, PubSubRegistry, TopicId}
 import org.slf4j.LoggerFactory
 import sample.chirper.chirp.api.{Chirp, ChirpService, HistoricalChirpsRequest, LiveChirpsRequest}
@@ -22,28 +19,15 @@ object ChirpServiceImpl {
 }
 
 class ChirpServiceImpl (
-  topics: PubSubRegistry,
-  db: CassandraSession
-  )(implicit ex: ExecutionContext) extends ChirpService {
+  topics: PubSubRegistry)(implicit ex: ExecutionContext) extends ChirpService {
 
-  // Needed to convert some Scala types to Java
 
   private val log = LoggerFactory.getLogger(classOf[ChirpServiceImpl])
 
-  createTable()
-  
-  private def createTable(): Unit = {
-    // @formatter:off
-    val result = db.executeCreateTable(
-      """CREATE TABLE IF NOT EXISTS chirp
-       | (userId text, timestamp bigint, uuid text, message text,
-       | PRIMARY KEY (userId, timestamp, uuid))
-       |""".stripMargin
-    )
-    result.onFailure {
-      case err: Throwable => log.error(s"Failed to create chirp table, due to: ${err.getMessage}", err)
-    }
-  }
+  /**
+    * By default sorted with time
+    */
+  private var allChirps = List[Chirp]()
 
   override def addChirp(userId: String): ServiceCall[Chirp, Done] = {
     chirp => {
@@ -53,9 +37,11 @@ class ChirpServiceImpl (
       val topic: PubSubRef[Chirp] = topics.refFor(TopicId(topicQualifier(userId)))
       topic.publish(chirp)
 
-      db.executeWrite("INSERT INTO chirp (userId, uuid, timestamp, message) VALUES (?, ?, ?, ?)",
-          chirp.userId, chirp.uuid, chirp.timestamp.toEpochMilli.asInstanceOf[AnyRef],
-          chirp.message)
+
+      this.synchronized {
+        allChirps = chirp :: allChirps
+      }
+      Future.successful(Done)
     }
   }
 
@@ -65,10 +51,11 @@ class ChirpServiceImpl (
   override def getLiveChirps: ServiceCall[LiveChirpsRequest, Source[Chirp, NotUsed]] = {
     req => {
       recentChirps(req.userIds).map { chirps =>
-        val sources = for(userId <- req.userIds) yield {
+        val sources: Seq[Source[Chirp, NotUsed]] = for(userId <- req.userIds) yield {
           val topic: PubSubRef[Chirp] = topics.refFor(TopicId(topicQualifier(userId)))
           topic.subscriber
         }
+
         val users = req.userIds.toSet
         val publishedChirps = Source(sources).flatMapMerge(sources.size, x => x)
           .filter(chirp => users(chirp.userId))
@@ -83,32 +70,30 @@ class ChirpServiceImpl (
   override def  getHistoricalChirps: ServiceCall[HistoricalChirpsRequest, Source[Chirp, NotUsed]] = {
     req => {
       val userIds = req.userIds
-      val chirps = userIds.map { userId => 
-        db.select("SELECT * FROM chirp WHERE userId = ? AND timestamp >= ? ORDER BY timestamp ASC",
-                  userId, Long.box(req.fromTime.toEpochMilli)).map(mapChirp)
+      val chirps = userIds.map { userId =>
+        Source((for {
+          row <- allChirps
+          if row.userId == userId
+        } yield row).sortWith((a, b) => a.timestamp.compareTo(b.timestamp) <= 0))
       }
+
       // Chirps from one user are ordered by timestamp, but chirps from different
       // users are not ordered. That can be improved by implementing a smarter
       // merge that takes the timestamps into account.
-      val res = Source(chirps).flatMapMerge(chirps.size, x => x)
+      val x = Source(chirps)
+      val res = x.flatMapMerge(chirps.size, x => x)
       Future.successful(res)
     }
   }
 
-  import com.datastax.driver.core.Row
-  private def mapChirp(row: Row): Chirp = {
-    Chirp(row.getString("userId"), row.getString("message"), 
-        Option(Instant.ofEpochMilli(row.getLong("timestamp"))), Option(row.getString("uuid")))
-  }
 
   private def recentChirps(userIds: Seq[String]): Future[Seq[Chirp]] = {
     val limit = 10
     def getChirps(userId: String): Future[Seq[Chirp]] = {
-      for {
-        jRows <- db.selectAll("SELECT * FROM chirp WHERE userId = ? ORDER BY timestamp DESC LIMIT ?",
-                             userId, Integer.valueOf(limit))
-        rows = jRows.toVector
-      } yield rows.map(mapChirp)
+      Future.successful(for {
+        row <- allChirps
+        if row.userId == userId
+      } yield row)
     }
     val results = Future.sequence(userIds.map(getChirps)).map(_.flatten)
     val sortedLimited = results.map(_.sorted.reverse) // reverse order

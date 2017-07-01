@@ -5,7 +5,7 @@ package controllers
 
 import play.api.mvc._
 
-class Application extends Controller {
+object MainController extends Controller {
 
   def index = Action {
     Ok(views.html.index.render())

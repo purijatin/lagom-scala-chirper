@@ -7,9 +7,10 @@ import java.time.Instant
 import java.util.UUID
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import play.api.libs.json.Json
+import play.api.libs.json.{JsPath, Json, OFormat, Reads}
+import play.api.libs.functional.syntax._ // Combinator syntax
 
-case class Chirp @JsonIgnore()(userId: String, message: String, timestamp: Instant, uuid: String) {
+case class Chirp (userId: String, message: String, @JsonIgnore timestamp: Instant,@JsonIgnore uuid: String) {
   def this(userId: String, message: String) =
     this(userId, message, Chirp.defaultTimestamp, Chirp.defaultUUID)
 }
@@ -25,5 +26,10 @@ object Chirp {
   private def defaultTimestamp = Instant.now()
   private def defaultUUID = UUID.randomUUID().toString
 
-  implicit val chirpFormat = Json.format[Chirp]
+  implicit val chirpRead: Reads[Chirp] = (
+    (JsPath \ "userId").read[String] and
+      (JsPath \ "message").read[String]
+  )((userId, message) => Chirp(userId, message, None, None))
+
+  implicit val chirpWrite = Json.writes[Chirp]
 }

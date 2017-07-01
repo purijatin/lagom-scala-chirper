@@ -3,61 +3,79 @@
  */
 package sample.chirper.friend.impl
 
-import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
-import scala.compat.java8.FutureConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue}
+
+import akka.{Done, NotUsed}
 import com.lightbend.lagom.scaladsl.api.ServiceCall
 import com.lightbend.lagom.scaladsl.api.transport.NotFound
-import com.lightbend.lagom.scaladsl.persistence.PersistentEntityRegistry
-import com.lightbend.lagom.scaladsl.persistence.cassandra.CassandraReadSide
-import com.lightbend.lagom.scaladsl.persistence.cassandra.CassandraSession
-import akka.Done
-import akka.NotUsed
-import javax.inject.Inject
+import sample.chirper.friend.api.{CreateUser, FriendId, FriendService, User}
 
-import sample.chirper.friend.api.FriendId
-import sample.chirper.friend.api.FriendService
-import sample.chirper.friend.api.User
+import scala.collection.immutable.Seq
+import scala.concurrent.{ExecutionContext, Future}
 
-class FriendServiceImpl @Inject() (
-    persistentEntities: PersistentEntityRegistry,
-    readSide: CassandraReadSide,
-    db: CassandraSession)(implicit ec: ExecutionContext) extends FriendService {
+class FriendServiceImpl ()(implicit ec: ExecutionContext) extends FriendService {
 
-//  // Needed to convert some Scala types to Java
-//  import ServiceCallConverter._
-//
-//  persistentEntities.register(classOf[FriendEntity])
+  val userMap = new ConcurrentHashMap[String, User]()
 
-//  readSide.register(classOf[FriendEventProcessor])
+  val friendsMap = new ConcurrentHashMap[String, ConcurrentLinkedQueue[User]]()
 
   override def getUser(id: String): ServiceCall[NotUsed, User] = {
     request =>
-      friendEntityRef(id).ask(GetUser())
-        .map(_.user.getOrElse(throw NotFound(s"user $id not found")))
+      val user = userMap.get(id)
+        if(user == null)
+          throw NotFound(s"user $id not found")
+        else {
+          Future.successful(getUser(user.userId, user.name))
+        }
   }
 
-  override def createUser(): (User) => Future[Done] = {
+  override def createUser(): ServiceCall[CreateUser, Done] = {
     request =>
-      friendEntityRef(request.userId).ask(CreateUser(request))
+      val alreadyExists = userMap.get(request.userId)
+      if(alreadyExists != null){
+        throw NotFound(s"user $request already exists")
+      }
+
+      val user = User(request)
+      userMap.put(request.userId, user)
+      val friends = new ConcurrentLinkedQueue[User]()
+
+      friendsMap.put(user.userId, friends)
+      Future.successful(Done)
   }
 
   override def addFriend(userId: String): ServiceCall[FriendId, Done] = {
     request =>
-      friendEntityRef(userId).ask(AddFriend(request.friendId))
-  }
+      val user = userMap.get(userId)
+
+      if(user == null)
+        throw NotFound(s"user $userId not found")
+      else {
+          val friendsList = friendsMap.get(userId)
+          val friend = userMap.get(request.friendId)
+          friendsList.add(friend)
+          Future.successful(Done)
+        }
+      }
+
 
   override def getFollowers(id: String): ServiceCall[NotUsed, Seq[String]] = {
     req =>
       {
-        db.selectAll("SELECT * FROM follower WHERE userId = ?", id).map { jrows =>
-          val rows = jrows.toVector
-          rows.map(_.getString("followedBy"))
+        import scala.collection.JavaConverters._
+
+        val user = userMap.get(id)
+        if(user == null)
+          throw NotFound(s"user $id not found")
+        else {
+          Future.successful(getUser(user.userId, user.name).friends)
         }
       }
   }
 
-  private def friendEntityRef(userId: String) =
-    persistentEntities.refFor[FriendEntity](userId)
+  private def getUser(userId: String, name:String): User ={
+    import scala.collection.JavaConverters._
+
+    User(userId, name, friendsMap.get(userId).asScala.toList.map(x => x.userId))
+  }
 }
